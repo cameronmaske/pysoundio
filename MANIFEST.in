@@ -8,3 +8,4 @@ include tests/__init__.py
 include tests/test_pysoundio.py
 include tests/test_soundiox.py
 include pysoundio/_soundiox.h
+recursive-include pysoundio/libs/ *

@@ -39,9 +39,9 @@ try:
         bit = "32"
         if is_os_64bit():
             bit = "64"
-        os.environ["PATH"] += os.pathsep + os.path.join(current_dir, "./libs/win/%s" % bit)
-    import _soundiox as soundio
-
+        lib_path = os.path.join(current_dir, "./libs/win/%s" % bit)
+        print(lib_path)
+        os.environ["PATH"] += os.pathsep + lib_path
     import _soundiox as soundio
 except ImportError as e:
     # TODO: Revert this, but useful for debugging. 

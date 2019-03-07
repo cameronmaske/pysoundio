@@ -50,6 +50,7 @@ setup(
     packages=['pysoundio'],
     ext_modules=[soundio],
     test_suite='tests',
+    zip_safe=False,
     keywords=('audio', 'sound', 'stream'),
     classifiers=[
         'Development Status :: 4 - Beta',
