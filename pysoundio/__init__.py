@@ -20,13 +20,32 @@
 # SOFTWARE.
 
 import sys
+import platform
+import os 
 
 __version__ = '1.0.0'
 
+def is_win():
+    return sys.platform.startswith("win")
+
+def is_os_64bit():
+    return platform.machine().endswith("64")
+
 
 try:
+    # Add library directory to path for Windows.
+    if is_win():
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        bit = "32"
+        if is_os_64bit():
+            bit = "64"
+        os.environ["PATH"] += os.pathsep + os.path.join(current_dir, "./libs/win/%s" % bit)
     import _soundiox as soundio
-except ImportError:
+
+    import _soundiox as soundio
+except ImportError as e:
+    # TODO: Revert this, but useful for debugging. 
+    raise e
     print('Please install libsoundio, then reinstall pysoundio')
     sys.exit(-1)
 
