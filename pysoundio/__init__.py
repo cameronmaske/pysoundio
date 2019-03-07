@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 Joe Todd
+# Copyright (c) 2019 Joe Todd
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -23,7 +23,7 @@ import sys
 import platform
 import os 
 
-__version__ = '1.0.0'
+__version__ = '1.1.0'
 
 def is_win():
     return sys.platform.startswith("win")

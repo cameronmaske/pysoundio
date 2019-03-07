@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018 Joe Todd
+ * Copyright (c) 2019 Joe Todd
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -278,6 +278,13 @@ static PyMethodDef soundio_methods[] = {
         pysoundio__outstream_get_latency, METH_VARARGS,
         "get next output frame length in seconds"
     },
+#if LIBSOUNDIO_VERSION_MAJOR >= 2
+    {
+        "outstream_set_volume",
+        pysoundio__outstream_set_volume, METH_VARARGS,
+        "set output stream volume"
+    },
+#endif
     {
         "input_ring_buffer_create",
         pysoundio__input_ring_buffer_create, METH_VARARGS,
@@ -489,8 +496,13 @@ pysoundio__version_string(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, ""))
         return NULL;
 
-    // Older Ubuntu versions don't include this
-    const char *version = "libsoundio";
+#if LIBSOUNDIO_VERSION_MAJOR < 2 && LIBSOUNDIO_VERSION_MINOR == 0
+    const char *version = "-.-.-";
+#else
+    char version[6];
+    sprintf(version, "%d.%d.%d", soundio_version_major(),
+        soundio_version_minor(), soundio_version_patch());
+#endif
     return Py_BuildValue("s", version);
 }
 
@@ -1242,6 +1254,19 @@ pysoundio__outstream_get_latency(PyObject *self, PyObject *args)
     return Py_BuildValue("i", seconds);
 }
 
+#if LIBSOUNDIO_VERSION_MAJOR >= 2
+static PyObject *
+pysoundio__outstream_set_volume(PyObject *self, PyObject *args)
+{
+    double volume;
+
+    if (!PyArg_ParseTuple(args, "d", &volume))
+        return NULL;
+
+    int new_volume = soundio_outstream_set_volume(rc.output_stream, volume);
+    return Py_BuildValue("i", new_volume);
+}
+#endif
 
 /*************************************************************
  * Ring Buffer API
