@@ -27,6 +27,7 @@ def print_devices(devices):
             round(device['software_latency_min'], 4),
             round(device['software_latency_max'], 4),
             round(device['software_latency_current'], 4)))
+        print('\tis raw: {}'.format(device['is_raw']))
         print("")
 
 

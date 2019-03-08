@@ -11,7 +11,7 @@ import math
 import struct
 import time
 
-import _soundiox as soundio
+# import _soundiox as soundio
 from pysoundio import (
     PySoundIo,
     SoundIoFormatFloat32LE,
