@@ -23,9 +23,9 @@ version = re.search(regex, vstr, re.M)
 
 if is_win():
     if is_os_64bit():
-        LIBRARY_DIRS = [os.path.abspath('./pysoundio/libs/win/64')]
+        LIBRARY_DIRS = [os.path.abspath('./pysoundio/libs/win/x64')]
     else:
-        LIBRARY_DIRS = [os.path.abspath('./pysoundio/libs/win/32')]
+        LIBRARY_DIRS = [os.path.abspath('./pysoundio/libs/win/x86')]
 
 else:
     LIBRARY_DIRS = ['/usr/local/lib']
