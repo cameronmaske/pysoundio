@@ -9,9 +9,11 @@
 #define SOUNDIO_SOUNDIO_H
 
 #include "endian.h"
-#define int bool
-#define true 1
-#define false 0
+typedef enum
+{
+    false,
+    true
+} bool;
 
 /// \cond
 #ifdef __cplusplus
