@@ -890,7 +890,10 @@ read_callback(struct SoundIoInStream *instream, int frame_count_min, int frame_c
 
     if (rc->read_callback) {
         PyGILState_STATE state = PyGILState_Ensure();
-        PyObject *result = PyObject_CallObject(rc->read_callback, NULL);
+        PyObject *arglist;
+        arglist = Py_BuildValue("(i)", frame_count_max);
+        PyObject *result = PyObject_CallObject(rc->read_callback, arglist);
+        Py_DECREF(arglist);
         Py_XDECREF(result);
         PyGILState_Release(state);
     }

@@ -15,28 +15,35 @@ import time
 from pysoundio import (
     PySoundIo,
     SoundIoFormatFloat32LE,
+    SoundIoFormatS16LE,
     SoundIoOutStream,
+    SoundIoBackendWasapi
 )
 
+def underflow_callback(*args, **kwargs):
+    print("Underflow")
 
 class Player(object):
 
     def __init__(self, freq=None, backend=None, output_device=None,
                  sample_rate=None, block_size=None):
-        self.pysoundio = PySoundIo(backend=None)
+        self.pysoundio = PySoundIo(backend=SoundIoBackendWasapi)
 
         self.freq = float(freq)
         self.seconds_offset = 0.0
         self.radians_per_second = self.freq * 2.0 * math.pi
         self.seconds_per_frame = 1.0 / sample_rate
 
+        block_size = 2048 * 2
+
         self.pysoundio.start_output_stream(
             device_id=output_device,
-            channels=1,
+            channels=2,
             sample_rate=sample_rate,
             block_size=block_size,
-            dtype=SoundIoFormatFloat32LE,
-            write_callback=self.callback
+            dtype=SoundIoFormatS16LE,
+            write_callback=self.callback,
+            underflow_callback=underflow_callback
         )
 
     def close(self):
