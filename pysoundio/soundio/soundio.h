@@ -9,7 +9,7 @@
 #define SOUNDIO_SOUNDIO_H
 
 #include "endian.h"
-typedef int bool;
+#define int bool
 #define true 1
 #define false 0
 
