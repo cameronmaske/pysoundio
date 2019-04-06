@@ -26,15 +26,17 @@ if is_win():
         LIBRARY_DIRS = [os.path.abspath('./pysoundio/libs/win/x64')]
     else:
         LIBRARY_DIRS = [os.path.abspath('./pysoundio/libs/win/x86')]
+    LIBRARIES = ['libsoundio']
 
 else:
     LIBRARY_DIRS = ['/usr/local/lib']
+    LIBRARIES = ['soundio']
 
 soundio = Extension('_soundiox',
                     sources=['pysoundio/_soundiox.c'],
                     include_dirs=['./pysoundio', '/usr/local/include'],
                     library_dirs=LIBRARY_DIRS,
-                    libraries=['soundio'])
+                    libraries=LIBRARIES)
 
 setup(
     name='pysoundio',
