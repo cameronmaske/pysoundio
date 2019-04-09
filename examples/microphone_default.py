@@ -50,8 +50,10 @@ class PassThrough():
         self.pysoundio = PySoundIo(backend=SoundIoBackendWasapi)
         self.read_queue = NumpyQueue(1024, 2)
         self.write_queue = None
+        self.default_write_queue = None
         self.read_thread = None
         self.write_thread = None
+        self.default_write_thread = None
 
     def start(self):
         channels = 2
@@ -63,7 +65,7 @@ class PassThrough():
         in_frames_per_callback = int(in_device_dict['software_latency_current'] * sample_rate)
 
         for device in self.pysoundio.list_devices()[1]:
-            if "Headphones".lower() in device['name'].lower() and not device['is_raw']:
+            if "Noise Blocker".lower() in device['name'].lower() and not device['is_raw']:
                 out_device = device
                 break
 
@@ -71,15 +73,25 @@ class PassThrough():
         frames_per_callback = max(out_frames_per_callback, in_frames_per_callback)
 
         self.write_queue = NumpyQueue(frames_per_callback * 2, 2)
+        self.default_write_queue = NumpyQueue(frames_per_callback * 2, 2)
 
-        self.write_thread = self.pysoundio.start_default_output_stream(
-            # device_id=out_device['index'],
+        self.write_thread = self.pysoundio.start_output_stream(
+            device_id=out_device['index'],
             channels=channels,
             sample_rate=sample_rate,
             block_size=block_size,
             dtype=SoundIoFormatS16LE,
             write_callback=self.write_callback,
             underflow_callback=self.underflow_callback
+        )
+
+        self.default_write_thread = self.pysoundio.start_default_output_stream(
+            channels=channels,
+            sample_rate=sample_rate,
+            block_size=block_size,
+            dtype=SoundIoFormatS16LE,
+            write_callback=self.write_default_callback,
+            # underflow_callback=self.underflow_callback
         )
 
         self.read_thread = self.pysoundio.start_input_stream(
@@ -107,9 +119,19 @@ class PassThrough():
         audio_level = get_level(read_data.astype("int16").tostring())
         if audio_level > 20:
             self.write_queue.append(np_data)
+            self.default_write_queue.append(np_data)
         else:
             self.write_queue.append(np.zeros(np_data.shape, dtype="int16"))
+            self.default_write_queue.append(np.zeros(np_data.shape, dtype="int16"))
         return
+
+    def write_default_callback(self, data, length):
+        # print("default_write_callback")
+        np_data = self.default_write_queue.pop_first(length)
+        buffer = np_data.astype("int16").tostring()
+        if len(buffer) > 0:
+            data[:] = buffer
+        return data
 
     def write_callback(self, data, length):
         # print("write_callback")
@@ -122,6 +144,7 @@ class PassThrough():
     def stop(self):
         self.read_thread.stop()
         self.write_thread.stop()
+        self.default_write_thread.stop()
 
     def __exit__(self):
         self.pysoundio.close()

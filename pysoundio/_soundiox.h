@@ -129,19 +129,35 @@ pysoundio__instream_get_latency(PyObject *self, PyObject *args);
 static PyObject *
 pysoundio__set_write_callbacks(PyObject *self, PyObject *args);
 static PyObject *
+pysoundio__set_default_write_callbacks(PyObject *self, PyObject *args);
+static PyObject *
 pysoundio__outstream_create(PyObject *self, PyObject *args);
+static PyObject *
+pysoundio__default_outstream_create(PyObject *self, PyObject *args);
 static PyObject *
 pysoundio__outstream_destroy(PyObject *self, PyObject *args);
 static PyObject *
+pysoundio__default_outstream_destroy(PyObject *self, PyObject *args);
+static PyObject *
 pysoundio__outstream_open(PyObject *self, PyObject *args);
+static PyObject *
+pysoundio__default_outstream_open(PyObject *self, PyObject *args);
 static PyObject *
 pysoundio__outstream_start(PyObject *self, PyObject *args);
 static PyObject *
+pysoundio__default_outstream_start(PyObject *self, PyObject *args);
+static PyObject *
 pysoundio__outstream_pause(PyObject *self, PyObject *args);
+static PyObject *
+pysoundio__default_outstream_pause(PyObject *self, PyObject *args);
 static PyObject *
 pysoundio__outstream_clear_buffer(PyObject *self, PyObject *args);
 static PyObject *
+pysoundio__default_outstream_clear_buffer(PyObject *self, PyObject *args);
+static PyObject *
 pysoundio__outstream_get_latency(PyObject *self, PyObject *args);
+static PyObject *
+pysoundio__default_outstream_get_latency(PyObject *self, PyObject *args);
 #if LIBSOUNDIO_VERSION_MAJOR >= 2
 static PyObject *
 pysoundio__outstream_set_volume(PyObject *self, PyObject *args);
@@ -154,6 +170,8 @@ static PyObject *
 pysoundio__input_ring_buffer_create(PyObject *self, PyObject *args);
 static PyObject *
 pysoundio__output_ring_buffer_create(PyObject *self, PyObject *args);
+static PyObject *
+pysoundio__default_output_ring_buffer_create(PyObject *self, PyObject *args);
 static PyObject *
 pysoundio__ring_buffer_destroy(PyObject *self, PyObject *args);
 static PyObject *
@@ -172,6 +190,5 @@ static PyObject *
 pysoundio__ring_buffer_clear(PyObject *self, PyObject *args);
 static PyObject *
 pysoundio__ring_buffer_capacity(PyObject *self, PyObject *args);
-
 
 #endif
