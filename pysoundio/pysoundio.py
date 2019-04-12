@@ -986,21 +986,16 @@ class PySoundIo(object):
         else:
             self.default_output['format'] = self.get_default_format(self.default_output['device'])
 
-        print("_create_default_output_stream")
         self._create_default_output_stream()
-        print("_open_default_output_stream")
         self._open_default_output_stream()
         pystream = _ctypes.cast(self.default_output['stream'], _ctypes.POINTER(SoundIoOutStream))
         self.default_output['bytes_per_frame'] = self.get_bytes_per_frame(self.default_output['format'], channels)
         capacity = (DEFAULT_RING_BUFFER_DURATION *
                     pystream.contents.sample_rate * self.default_output['bytes_per_frame'])
-        print("_create_default_output_ring_buffer")
         self._create_default_output_ring_buffer(capacity)
         self._clear_default_output_buffer()
-        print("_start_default_output_stream")
         self._start_default_output_stream()
         self.default_output['write_thread'] = _WriteThread(buffer=self.default_output['buffer'], callback=self.default_output['write_callback'], bytes_per_frame=self.default_output['bytes_per_frame'], queue=self.default_output['write_queue'])
         self.default_output['write_thread'].start()
         self.flush()
-        print("end")
         return self.default_output['write_thread']
