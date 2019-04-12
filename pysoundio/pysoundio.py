@@ -9,7 +9,7 @@ It is suitable for real-time and consumer software.
 """
 import logging
 import threading
-from queue import Queue
+from queue import Queue, Empty
 from contextlib import contextmanager
 
 import ctypes as _ctypes
@@ -54,15 +54,20 @@ class _ReadThread(threading.Thread):
     def run(self):
         """ Callback with data """
         while not self.stop_event.is_set():
-            self.queue.get(block=True)
-            fill_bytes = soundio.ring_buffer_fill_count(self.buffer)
-            read_buf = soundio.ring_buffer_read_ptr(self.buffer)
-            if self.callback and fill_bytes:
-                self.callback(data=read_buf, length=fill_bytes / self.bytes_per_frame)
-            soundio.ring_buffer_advance_read_ptr(self.buffer, fill_bytes)
+            value = self.queue.get(block=True)
+            if value == -1:
+                return
+            else:
+                fill_bytes = soundio.ring_buffer_fill_count(self.buffer)
+                read_buf = soundio.ring_buffer_read_ptr(self.buffer)
+                if self.callback and fill_bytes:
+                    self.callback(data=read_buf, length=fill_bytes / self.bytes_per_frame)
+                soundio.ring_buffer_advance_read_ptr(self.buffer, fill_bytes)
 
     def stop(self):
         self.stop_event.set()
+        self.queue.put(-1)
+        self.queue.task_done()
 
 class _WriteThread(threading.Thread):
 
@@ -78,16 +83,23 @@ class _WriteThread(threading.Thread):
     def run(self):
         """ Callback to fill data """
         while not self.stop_event.is_set():
-            self.block_size = self.queue.get(block=True)
-            data = bytearray(b'\x00' * self.block_size * self.bytes_per_frame)
-            free_bytes = soundio.ring_buffer_free_count(self.buffer)
-            if self.callback and free_bytes >= len(data):
-                self.callback(data=data, length=self.block_size)
-            soundio.ring_buffer_write_ptr(self.buffer, data, len(data))
-            soundio.ring_buffer_advance_write_ptr(self.buffer, len(data))
+            value = self.queue.get(block=True, timeout=1)
+            if value == -1:
+                return
+            else:
+                self.block_size = value
+                data = bytearray(b'\x00' * self.block_size * self.bytes_per_frame)
+                free_bytes = soundio.ring_buffer_free_count(self.buffer)
+                if self.callback and free_bytes >= len(data):
+                    self.callback(data=data, length=self.block_size)
+                soundio.ring_buffer_write_ptr(self.buffer, data, len(data))
+                soundio.ring_buffer_advance_write_ptr(self.buffer, len(data))
+
 
     def stop(self):
         self.stop_event.set()
+        self.queue.put(-1)
+        self.queue.task_done()
 
 
 
@@ -566,7 +578,7 @@ class PySoundIo(object):
         self.input['stream'] = soundio.instream_create(self.input['device'])
 
         pyinstream = _ctypes.cast(self.input['stream'], _ctypes.POINTER(SoundIoInStream))
-        soundio.set_read_callbacks(self._read_callback, self._overflow_callback)
+        soundio.set_read_callbacks(self._read_callback, self._overflow_callback, self._read_error_callback)
 
         layout = self._get_default_layout(self.input['channels'])
         pylayout = _ctypes.cast(layout, _ctypes.POINTER(SoundIoChannelLayout))
@@ -620,6 +632,23 @@ class PySoundIo(object):
         self.input['read_queue'].put(0)
         return
 
+    def _read_error_callback(self, error):
+        if self.input['read_thread']:
+            self.input['read_thread'].stop()
+            self.input['read_thread'] = None
+
+        if self.input['buffer']:
+            soundio.ring_buffer_destroy(self.input['buffer'])
+            self.input['buffer'] = None
+
+        if self.input['device']:
+            soundio.device_unref(self.input['device'])
+            self.input['device'] = None
+
+        if self.input['error_callback']:
+            self.input['error_callback'](error)
+        return
+
     def _overflow_callback(self):
         """
         Internal overflow callback, which calls the external
@@ -631,7 +660,7 @@ class PySoundIo(object):
     def start_input_stream(self, device_id=None,
                            sample_rate=None, dtype=None,
                            block_size=None, channels=None,
-                           read_callback=None, overflow_callback=None):
+                           read_callback=None, overflow_callback=None, error_callback=None):
         """
         Creates input stream, and sets parameters. Then allocates
         a ring buffer and starts the stream.
@@ -650,6 +679,7 @@ class PySoundIo(object):
         read_callback: (fn) function to call with data, the function must have
                         the arguments data and length. See record example
         overflow_callback: (fn) function to call if data is not being read fast enough
+        error_callback: (fn) function to call if error has occured that causes the stream to end
 
         Raises
         ------
@@ -679,6 +709,7 @@ class PySoundIo(object):
         self.input['channels'] = channels
         self.input['read_callback'] = read_callback
         self.input['overflow_callback'] = overflow_callback
+        self.input['error_callback'] = error_callback
         self.input['read_queue'] = Queue(maxsize=0)
 
         if device_id is not None:
@@ -725,7 +756,7 @@ class PySoundIo(object):
 
         pystream = _ctypes.cast(self.output['stream'], _ctypes.POINTER(SoundIoOutStream))
         if not self.testing:
-            soundio.set_write_callbacks(self._write_callback, self._underflow_callback)
+            soundio.set_write_callbacks(self._write_callback, self._underflow_callback, self._write_error_callback)
 
         layout = self._get_default_layout(self.output['channels'])
         pylayout = _ctypes.cast(layout, _ctypes.POINTER(SoundIoChannelLayout))
@@ -746,7 +777,7 @@ class PySoundIo(object):
 
         pystream = _ctypes.cast(self.default_output['stream'], _ctypes.POINTER(SoundIoOutStream))
         if not self.testing:
-            soundio.set_default_write_callbacks(self._default_write_callback, self._default_underflow_callback)
+            soundio.set_default_write_callbacks(self._default_write_callback, self._default_underflow_callback, self._default_error_callback)
 
         layout = self._get_default_layout(self.default_output['channels'])
         pylayout = _ctypes.cast(layout, _ctypes.POINTER(SoundIoChannelLayout))
@@ -805,6 +836,23 @@ class PySoundIo(object):
         self.output['write_queue'].put(size)
         return
 
+    def _write_error_callback(self, error):
+        if self.output['write_thread']:
+            self.output['write_thread'].stop()
+            self.output['write_thread'] = None
+
+        if self.output['buffer']:
+            soundio.ring_buffer_destroy(self.output['buffer'])
+            self.output['buffer'] = None
+
+        if self.output['device']:
+            soundio.device_unref(self.output['device'])
+            self.output['device'] = None
+
+        if self.output['error_callback']:
+            self.output['error_callback'](error)
+        return
+
     def _underflow_callback(self):
         """
         Internal underflow callback, which calls the external
@@ -818,6 +866,23 @@ class PySoundIo(object):
         Internal write callback.
         """
         self.default_output['write_queue'].put(size)
+        return
+
+    def _default_error_callback(self, error):
+        if self.default_output['write_thread']:
+            self.default_output['write_thread'].stop()
+            self.default_output['write_thread'] = None
+
+        if self.default_output['buffer']:
+            soundio.ring_buffer_destroy(self.default_output['buffer'])
+            self.default_output['buffer'] = None
+
+        if self.default_output['device']:
+            soundio.device_unref(self.default_output['device'])
+            self.default_output['device'] = None
+
+        if self.default_output['error_callback']:
+            self.default_output['error_callback'](error)
         return
 
     def _default_underflow_callback(self):
@@ -869,7 +934,7 @@ class PySoundIo(object):
     def start_output_stream(self, device_id=None,
                             sample_rate=None, dtype=None,
                             block_size=None, channels=None,
-                            write_callback=None, underflow_callback=None):
+                            write_callback=None, underflow_callback=None, error_callback=None):
         """
         Creates output stream, and sets parameters. Then allocates
         a ring buffer and starts the stream.
@@ -888,6 +953,7 @@ class PySoundIo(object):
         write_callback: (fn) function to call with data, the function must have
                         the arguments data and length.
         underflow_callback: (fn) function to call if data is not being written fast enough
+        error_callback: (fn) function to call on a stream ending error
 
         Raises
         ------
@@ -920,6 +986,7 @@ class PySoundIo(object):
         self.output['channels'] = channels
         self.output['write_callback'] = write_callback
         self.output['underflow_callback'] = underflow_callback
+        self.output['error_callback'] = error_callback
         self.output['write_queue'] = Queue(maxsize=0)
 
         if device_id is not None:
@@ -958,13 +1025,14 @@ class PySoundIo(object):
         self.flush()
         return self.output['write_thread']
 
-    def start_default_output_stream(self, sample_rate=None, dtype=None, block_size=None, channels=None, write_callback=None, underflow_callback=None):
+    def start_default_output_stream(self, sample_rate=None, dtype=None, block_size=None, channels=None, write_callback=None, underflow_callback=None, error_callback=None):
         self.default_output['sample_rate'] = sample_rate
         self.default_output['format'] = dtype
         self.default_output['block_size'] = block_size
         self.default_output['channels'] = channels
         self.default_output['write_callback'] = write_callback
         self.default_output['underflow_callback'] = underflow_callback
+        self.default_output['error_callback'] = error_callback
         self.default_output['write_queue'] = Queue(maxsize=0)
 
         self.default_output['default_device'] = self.get_default_output_device()

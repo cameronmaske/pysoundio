@@ -5,7 +5,7 @@ from pysoundio import (
     SoundIoFormatFloat32LE,
 )
 from time import sleep
-
+import sys
 
 import numpy as np
 
@@ -45,6 +45,12 @@ def get_level(data):
             normalize = int(100 + dbs)
     return normalize
 
+RUNNING = True
+def error_callback(error):
+    print(error)
+    global RUNNING
+    RUNNING = False
+
 class PassThrough():
     def __init__(self):
         self.pysoundio = PySoundIo(backend=SoundIoBackendWasapi)
@@ -72,14 +78,15 @@ class PassThrough():
 
         self.write_queue = NumpyQueue(frames_per_callback * 2, 2)
 
-        self.write_thread = self.pysoundio.start_default_output_stream(
-            # device_id=out_device['index'],
+        self.write_thread = self.pysoundio.start_output_stream(
+            device_id=out_device['index'],
             channels=channels,
             sample_rate=sample_rate,
             block_size=block_size,
             dtype=SoundIoFormatS16LE,
             write_callback=self.write_callback,
-            underflow_callback=self.underflow_callback
+            underflow_callback=self.underflow_callback,
+            error_callback=error_callback
         )
 
         self.read_thread = self.pysoundio.start_input_stream(
@@ -89,7 +96,8 @@ class PassThrough():
             block_size=block_size,
             dtype=SoundIoFormatS16LE,
             read_callback=self.read_callback,
-            overflow_callback=self.overflow_callback
+            overflow_callback=self.overflow_callback,
+            error_callback=error_callback
         )
 
     def overflow_callback(self):
@@ -105,7 +113,7 @@ class PassThrough():
         self.read_queue.append(np_data)
         read_data = self.read_queue.read_last(1024)
         audio_level = get_level(read_data.astype("int16").tostring())
-        if audio_level > 20:
+        if audio_level > 0:
             self.write_queue.append(np_data)
         else:
             self.write_queue.append(np.zeros(np_data.shape, dtype="int16"))
@@ -132,9 +140,12 @@ if __name__ == '__main__':
     pass_through.start()
     print("Stream started")
 
-    try:
-        while True:
+
+    while RUNNING:
+        try:
             sleep(1)
-    except KeyboardInterrupt:
-        pass_through.stop()
-        print('Exiting...')
+        except KeyboardInterrupt:
+            RUNNING = False
+
+    pass_through.stop()
+    pass_through.pysoundio.close()

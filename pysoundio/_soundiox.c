@@ -414,7 +414,11 @@ struct RecordContext {
     PyObject *underflow_callback;
     PyObject *default_underflow_callback;
 
+    PyObject *write_error_callback;
+    PyObject *read_error_callback;
+    PyObject *default_write_error_callback;
 };
+
 struct RecordContext rc;
 
 static int min_int(int a, int b) {
@@ -888,6 +892,7 @@ pysoundio__get_bytes_per_second(PyObject *self, PyObject *args)
 static void
 read_callback(struct SoundIoInStream *instream, int frame_count_min, int frame_count_max)
 {
+    // fprintf(stderr, "read\n");
     struct RecordContext *rc = instream->userdata;
     struct SoundIoChannelArea *areas;
     int err;
@@ -952,6 +957,22 @@ read_callback(struct SoundIoInStream *instream, int frame_count_min, int frame_c
 }
 
 static void
+read_error_callback(struct SoundIoInStream *instream, int err)
+{
+    struct RecordContext *rc = instream->userdata;
+
+    if (rc->read_error_callback) {
+        PyGILState_STATE state = PyGILState_Ensure();
+        PyObject *arglist;
+        arglist = Py_BuildValue("(s)", soundio_strerror(err));
+        PyObject *result = PyObject_CallObject(rc->read_error_callback, arglist);
+        Py_DECREF(arglist);
+        Py_XDECREF(result);
+        PyGILState_Release(state);
+    }
+}
+
+static void
 overflow_callback(struct SoundIoInStream *instream)
 {
     struct RecordContext *rc = instream->userdata;
@@ -969,8 +990,9 @@ pysoundio__set_read_callbacks(PyObject *self, PyObject *args)
 {
     PyObject *read;
     PyObject *flow;
+    PyObject *error;
 
-    if (PyArg_ParseTuple(args, "OO", &read, &flow)) {
+    if (PyArg_ParseTuple(args, "OOO", &read, &flow, &error)) {
         if (!PyCallable_Check(read)) {
             PyErr_SetString(PyExc_TypeError, "parameter must be callable");
             return NULL;
@@ -979,16 +1001,25 @@ pysoundio__set_read_callbacks(PyObject *self, PyObject *args)
             PyErr_SetString(PyExc_TypeError, "parameter must be callable");
             return NULL;
         }
+        if (!PyCallable_Check(error)) {
+            PyErr_SetString(PyExc_TypeError, "parameter must be callable");
+            return NULL;
+        }
         Py_XINCREF(read);
         Py_XINCREF(flow);
+        Py_XINCREF(error);
         Py_XDECREF(rc.read_callback);
         Py_XDECREF(rc.overflow_callback);
+        Py_XDECREF(rc.read_error_callback);
         rc.read_callback = read;
         rc.overflow_callback = flow;
+        rc.read_error_callback = error;
         Py_RETURN_NONE;
     }
     return NULL;
 }
+
+
 
 static PyObject *
 pysoundio__instream_create(PyObject *self, PyObject *args)
@@ -1002,6 +1033,7 @@ pysoundio__instream_create(PyObject *self, PyObject *args)
     rc.input_stream = soundio_instream_create(device);
 
     rc.input_stream->read_callback = read_callback;
+    rc.input_stream->error_callback = read_error_callback;
     rc.input_stream->overflow_callback = overflow_callback;
     rc.input_stream->userdata = &rc;
 
@@ -1091,8 +1123,9 @@ pysoundio__set_write_callbacks(PyObject *self, PyObject *args)
 {
     PyObject *write;
     PyObject *flow;
+    PyObject *error;
 
-    if (PyArg_ParseTuple(args, "OO", &write, &flow)) {
+    if (PyArg_ParseTuple(args, "OOO", &write, &flow, &error)) {
         if (!PyCallable_Check(write)) {
             PyErr_SetString(PyExc_TypeError, "parameter must be callable");
             return NULL;
@@ -1101,12 +1134,19 @@ pysoundio__set_write_callbacks(PyObject *self, PyObject *args)
             PyErr_SetString(PyExc_TypeError, "parameter must be callable");
             return NULL;
         }
+        if (!PyCallable_Check(error)) {
+            PyErr_SetString(PyExc_TypeError, "parameter must be callable");
+            return NULL;
+        }
         Py_XINCREF(write);
         Py_XINCREF(flow);
+        Py_XINCREF(error);
         Py_XDECREF(rc.write_callback);
         Py_XDECREF(rc.underflow_callback);
+        Py_XDECREF(rc.write_error_callback);
         rc.write_callback = write;
         rc.underflow_callback = flow;
+        rc.write_error_callback = error;
         Py_RETURN_NONE;
     }
     return NULL;
@@ -1118,8 +1158,9 @@ pysoundio__set_default_write_callbacks(PyObject *self, PyObject *args)
 {
     PyObject *write;
     PyObject *flow;
+    PyObject *error;
 
-    if (PyArg_ParseTuple(args, "OO", &write, &flow)) {
+    if (PyArg_ParseTuple(args, "OOO", &write, &flow, &error)) {
         if (!PyCallable_Check(write)) {
             PyErr_SetString(PyExc_TypeError, "parameter must be callable");
             return NULL;
@@ -1128,12 +1169,19 @@ pysoundio__set_default_write_callbacks(PyObject *self, PyObject *args)
             PyErr_SetString(PyExc_TypeError, "parameter must be callable");
             return NULL;
         }
+        if (!PyCallable_Check(error)) {
+            PyErr_SetString(PyExc_TypeError, "parameter must be callable");
+            return NULL;
+        }
         Py_XINCREF(write);
         Py_XINCREF(flow);
+        Py_XINCREF(error);
         Py_XDECREF(rc.default_write_callback);
         Py_XDECREF(rc.default_underflow_callback);
+        Py_XDECREF(rc.default_write_error_callback);
         rc.default_write_callback = write;
         rc.default_underflow_callback = flow;
+        rc.default_write_error_callback = error;
         Py_RETURN_NONE;
     }
     return NULL;
@@ -1219,6 +1267,21 @@ write_callback(struct SoundIoOutStream *outstream, int frame_count_min, int fram
 
 
 static void
+write_error_callback(struct SoundIoOutStream *outstream, int err)
+{
+    struct RecordContext *rc = outstream->userdata;
+    if (rc->write_error_callback) {
+        PyGILState_STATE state = PyGILState_Ensure();
+        PyObject *arglist;
+        arglist = Py_BuildValue("(s)", soundio_strerror(err));
+        PyObject *result = PyObject_CallObject(rc->write_error_callback, arglist);
+        Py_DECREF(arglist);
+        PyGILState_Release(state);
+    }
+}
+
+
+static void
 default_write_callback(struct SoundIoOutStream *outstream, int frame_count_min, int frame_count_max)
 {
     struct RecordContext *rc = outstream->userdata;
@@ -1298,6 +1361,20 @@ default_write_callback(struct SoundIoOutStream *outstream, int frame_count_min, 
 }
 
 static void
+default_write_error_callback(struct SoundIoOutStream *outstream, int err)
+{
+    struct RecordContext *rc = outstream->userdata;
+    if (rc->default_write_error_callback) {
+        PyGILState_STATE state = PyGILState_Ensure();
+        PyObject *arglist;
+        arglist = Py_BuildValue("(s)", soundio_strerror(err));
+        PyObject *result = PyObject_CallObject(rc->default_write_error_callback, arglist);
+        Py_DECREF(arglist);
+        PyGILState_Release(state);
+    }
+}
+
+static void
 underflow_callback(struct SoundIoOutStream *outstream)
 {
     struct RecordContext *rc = outstream->userdata;
@@ -1335,6 +1412,7 @@ pysoundio__outstream_create(PyObject *self, PyObject *args)
     rc.output_stream = soundio_outstream_create(device);
 
     rc.output_stream->write_callback = write_callback;
+    rc.output_stream->error_callback = write_error_callback;
     rc.output_stream->underflow_callback = underflow_callback;
     rc.output_stream->userdata = &rc;
 
@@ -1358,6 +1436,7 @@ pysoundio__default_outstream_create(PyObject *self, PyObject *args)
     rc.default_output_stream = soundio_outstream_create(device);
 
     rc.default_output_stream->write_callback = default_write_callback;
+    rc.default_output_stream->error_callback = default_write_error_callback;
     rc.default_output_stream->underflow_callback = default_underflow_callback;
     rc.default_output_stream->userdata = &rc;
 

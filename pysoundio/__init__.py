@@ -21,7 +21,7 @@
 
 import sys
 import platform
-import os 
+import os
 
 __version__ = '1.1.0'
 
