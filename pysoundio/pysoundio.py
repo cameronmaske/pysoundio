@@ -83,7 +83,7 @@ class _WriteThread(threading.Thread):
     def run(self):
         """ Callback to fill data """
         while not self.stop_event.is_set():
-            value = self.queue.get(block=True, timeout=1)
+            value = self.queue.get(block=True)
             if value == -1:
                 return
             else:
