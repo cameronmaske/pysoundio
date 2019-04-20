@@ -10,7 +10,9 @@ It is suitable for real-time and consumer software.
 import logging
 import threading
 from queue import Queue, Empty
+from multiprocessing import Pipe
 from contextlib import contextmanager
+from datetime import datetime
 
 import ctypes as _ctypes
 from .constants import (
@@ -34,8 +36,10 @@ from .structures import (
 import _soundiox as soundio
 
 LOGGER = logging.getLogger(__name__)
-
-
+DISABLE = False
+DEBUG = False
+CRAY = False
+PIPE = True
 
 class PySoundIoError(Exception):
     pass
@@ -47,46 +51,68 @@ class _ReadThread(threading.Thread):
         self.buffer = parent.input['buffer']
         self.callback = parent.input['read_callback']
         self.bytes_per_frame = parent.input['bytes_per_frame']
-        self.queue = parent.input['read_queue']
+        if PIPE:
+            self.pipe = parent.input['child_pipe']
+            self.parent_pipe = parent.input['parent_pipe']
+        else:
+            self.queue = parent.input['read_queue']
         self.stop_event = threading.Event()
         super(_ReadThread, self).__init__(*args, **kwargs)
 
     def run(self):
         """ Callback with data """
         while not self.stop_event.is_set():
-            value = self.queue.get(block=True)
-            if value == -1:
-                return
-            else:
+            try:
+                if PIPE:
+                    value = self.pipe.recv()
+                else:
+                    value = self.queue.get(block=True, timeout=1)
+                    if value == -1:
+                        return
                 fill_bytes = soundio.ring_buffer_fill_count(self.buffer)
                 read_buf = soundio.ring_buffer_read_ptr(self.buffer)
                 if self.callback and fill_bytes:
                     self.callback(data=read_buf, length=fill_bytes / self.bytes_per_frame)
                 soundio.ring_buffer_advance_read_ptr(self.buffer, fill_bytes)
+            except Empty:
+                pass
+            except EOFError:
+                return
 
     def stop(self):
         self.stop_event.set()
-        self.queue.put(-1)
-        self.queue.task_done()
+        if PIPE:
+            self.parent_pipe.close()
+
+        else:
+            self.queue.put(-1)
+            self.queue.task_done()
 
 class _WriteThread(threading.Thread):
 
-    def __init__(self, buffer, bytes_per_frame, queue, callback, *args, **kwargs):
+    def __init__(self, buffer, bytes_per_frame, queue, callback, parent, *args, **kwargs):
         self.block_size = None
         self.buffer = buffer
         self.callback = callback
         self.bytes_per_frame = bytes_per_frame
-        self.queue = queue
+        if PIPE:
+            self.pipe = parent.output['child_pipe']
+            self.parent_pipe = parent.output['parent_pipe']
+        else:
+            self.queue = queue
         self.stop_event = threading.Event()
         super(_WriteThread, self).__init__(*args, **kwargs)
 
     def run(self):
         """ Callback to fill data """
         while not self.stop_event.is_set():
-            value = self.queue.get(block=True)
-            if value == -1:
-                return
-            else:
+            try:
+                if PIPE:
+                    value = self.pipe.recv()
+                else:
+                    value = self.queue.get(block=True, timeout=1)
+                    if value == -1:
+                        return
                 self.block_size = value
                 data = bytearray(b'\x00' * self.block_size * self.bytes_per_frame)
                 free_bytes = soundio.ring_buffer_free_count(self.buffer)
@@ -94,12 +120,19 @@ class _WriteThread(threading.Thread):
                     self.callback(data=data, length=self.block_size)
                 soundio.ring_buffer_write_ptr(self.buffer, data, len(data))
                 soundio.ring_buffer_advance_write_ptr(self.buffer, len(data))
+            except Empty:
+                pass
+            except EOFError:
+                return
 
 
     def stop(self):
+        if PIPE:
+            self.parent_pipe.close()
+        else:
+            self.queue.put(-1)
+            self.queue.task_done()
         self.stop_event.set()
-        self.queue.put(-1)
-        self.queue.task_done()
 
 
 
@@ -629,7 +662,21 @@ class PySoundIo(object):
         """
         Internal read callback.
         """
-        self.input['read_queue'].put(0)
+        try:
+            if DEBUG:
+                print("read", datetime.now())
+            if PIPE:
+                self.input['parent_pipe'].send(0)
+            else:
+                if not DISABLE:
+                    self.input['read_queue'].put(0)
+            if CRAY:
+                fill_bytes = soundio.ring_buffer_fill_count(self.input['buffer'])
+                read_buf = soundio.ring_buffer_read_ptr(self.input['buffer'])
+                print(fill_bytes / self.input['bytes_per_frame'])
+                soundio.ring_buffer_advance_read_ptr(self.input['buffer'], fill_bytes)
+        except Exception as e:
+            print(e)
         return
 
     def _read_error_callback(self, error):
@@ -710,7 +757,12 @@ class PySoundIo(object):
         self.input['read_callback'] = read_callback
         self.input['overflow_callback'] = overflow_callback
         self.input['error_callback'] = error_callback
-        self.input['read_queue'] = Queue(maxsize=0)
+        if PIPE:
+            child_pipe, parent_pipe = Pipe(True)
+            self.input['parent_pipe'] = parent_pipe
+            self.input['child_pipe'] = child_pipe
+        else:
+            self.input['read_queue'] = Queue(maxsize=0)
 
         if device_id is not None:
             self.input['device'] = self.get_input_device(device_id)
@@ -743,10 +795,12 @@ class PySoundIo(object):
 
         self._create_input_ring_buffer(capacity)
         self._start_input_stream()
-        self.input['read_thread'] = _ReadThread(parent=self)
-        self.input['read_thread'].start()
+        if not DISABLE:
+            self.input['read_thread'] = _ReadThread(parent=self)
+            self.input['read_thread'].start()
         self.flush()
-        return self.input['read_thread']
+        if not DISABLE:
+            return self.input['read_thread']
 
     def _create_output_stream(self):
         """
@@ -833,7 +887,13 @@ class PySoundIo(object):
         """
         Internal write callback.
         """
-        self.output['write_queue'].put(size)
+        if DEBUG:
+            print("write", datetime.now())
+        if PIPE:
+            self.output['parent_pipe'].send(size)
+        else:
+            if not DISABLE:
+                self.output['write_queue'].put(size)
         return
 
     def _write_error_callback(self, error):
@@ -987,7 +1047,12 @@ class PySoundIo(object):
         self.output['write_callback'] = write_callback
         self.output['underflow_callback'] = underflow_callback
         self.output['error_callback'] = error_callback
-        self.output['write_queue'] = Queue(maxsize=0)
+        if PIPE:
+            child_pipe, parent_pipe = Pipe(False)
+            self.output['child_pipe'] = child_pipe
+            self.output['parent_pipe'] = parent_pipe
+        else:
+            self.output['write_queue'] = Queue(maxsize=0)
 
         if device_id is not None:
             self.output['device'] = self.get_output_device(device_id)
@@ -1020,10 +1085,12 @@ class PySoundIo(object):
         self._create_output_ring_buffer(capacity)
         self._clear_output_buffer()
         self._start_output_stream()
-        self.output['write_thread'] = _WriteThread(buffer=self.output['buffer'], callback=self.output['write_callback'], bytes_per_frame=self.output['bytes_per_frame'], queue=self.output['write_queue'])
-        self.output['write_thread'].start()
+        if not DISABLE:
+            self.output['write_thread'] = _WriteThread(buffer=self.output['buffer'], callback=self.output['write_callback'], bytes_per_frame=self.output['bytes_per_frame'], queue=self.output['write_queue'], parent=self)
+            self.output['write_thread'].start()
         self.flush()
-        return self.output['write_thread']
+        if not DISABLE:
+            return self.output['write_thread']
 
     def start_default_output_stream(self, sample_rate=None, dtype=None, block_size=None, channels=None, write_callback=None, underflow_callback=None, error_callback=None):
         self.default_output['sample_rate'] = sample_rate
@@ -1063,7 +1130,7 @@ class PySoundIo(object):
         self._create_default_output_ring_buffer(capacity)
         self._clear_default_output_buffer()
         self._start_default_output_stream()
-        self.default_output['write_thread'] = _WriteThread(buffer=self.default_output['buffer'], callback=self.default_output['write_callback'], bytes_per_frame=self.default_output['bytes_per_frame'], queue=self.default_output['write_queue'])
+        self.default_output['write_thread'] = _WriteThread(buffer=self.default_output['buffer'], callback=self.default_output['write_callback'], bytes_per_frame=self.default_output['bytes_per_frame'], queue=self.default_output['write_queue'], parent=self)
         self.default_output['write_thread'].start()
         self.flush()
         return self.default_output['write_thread']

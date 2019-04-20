@@ -44,7 +44,7 @@ class PassThrough():
         print("Underflow")
 
     def read_callback(self, data, length):
-        print("Read: {}".format(length))
+        # print("Read: {}".format(length))
         # From the microphone
         self.out_data = data 
 
@@ -52,7 +52,7 @@ class PassThrough():
         # To the speakers
         if self.out_data:
             data[:] = self.out_data
-        print("No out data")
+        # print("No out data")
         return data
 
     def __exit__(self): 

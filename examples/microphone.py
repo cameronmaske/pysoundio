@@ -51,15 +51,17 @@ def error_callback(error):
     global RUNNING
     RUNNING = False
 
+
 class PassThrough():
     def __init__(self):
-        self.pysoundio = PySoundIo(backend=SoundIoBackendWasapi)
+        self.pysoundio = None
         self.read_queue = NumpyQueue(1024, 2)
         self.write_queue = None
         self.read_thread = None
         self.write_thread = None
 
     def start(self):
+        self.pysoundio = PySoundIo(backend=SoundIoBackendWasapi)
         channels = 2
         sample_rate = 48000
         block_size = 480
@@ -100,6 +102,7 @@ class PassThrough():
             error_callback=error_callback
         )
 
+
     def overflow_callback(self):
         print("Overflow")
 
@@ -111,7 +114,7 @@ class PassThrough():
         np_data = np.frombuffer(data, dtype="int16")
         np_data = np_data.reshape((2, -1))
         self.read_queue.append(np_data)
-        read_data = self.read_queue.read_last(1024)
+        read_data = self.read_queue.read_last(480)
         audio_level = get_level(read_data.astype("int16").tostring())
         if audio_level > 0:
             self.write_queue.append(np_data)
@@ -143,7 +146,7 @@ if __name__ == '__main__':
 
     while RUNNING:
         try:
-            sleep(1)
+            sleep(2)
         except KeyboardInterrupt:
             RUNNING = False
 
