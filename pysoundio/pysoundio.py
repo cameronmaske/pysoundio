@@ -844,17 +844,17 @@ class PySoundIo(object):
         if DEBUG:
             print("_write_default")
 
-        data = bytearray(b'\x00' * block_size * self.output['bytes_per_frame'])
-        free_bytes = soundio.ring_buffer_free_count(self.output['buffer'])
+        data = bytearray(b'\x00' * block_size * self.default_output['bytes_per_frame'])
+        free_bytes = soundio.ring_buffer_free_count(self.default_output['buffer'])
         if self.default_output['write_callback']:
             def wrapped_call(callback, data, block_size):
                 data = callback(data=data, length=block_size)
-                soundio.ring_buffer_write_ptr(self.output['buffer'], data, len(data))
-                soundio.ring_buffer_advance_write_ptr(self.output['buffer'], len(data))
+                soundio.ring_buffer_write_ptr(self.default_output['buffer'], data, len(data))
+                soundio.ring_buffer_advance_write_ptr(self.default_output['buffer'], len(data))
             self.worker_loop.call_soon_threadsafe(wrapped_call, self.default_output['write_callback'], data, block_size)
         else:
-            soundio.ring_buffer_write_ptr(self.output['buffer'], data, len(data))
-            soundio.ring_buffer_advance_write_ptr(self.output['buffer'], len(data))
+            soundio.ring_buffer_write_ptr(self.default_output['buffer'], data, len(data))
+            soundio.ring_buffer_advance_write_ptr(self.default_output['buffer'], len(data))
         return
 
     def _default_error_callback(self, error):
