@@ -114,7 +114,6 @@ class PySoundIo(object):
         if self.output['stream']:
             soundio.outstream_destroy()
             self.output['stream'] = None
-
         if self.default_output['stream']:
             soundio.default_outstream_destroy()
             self.default_output['stream'] = None
@@ -626,7 +625,7 @@ class PySoundIo(object):
     def start_input_stream(self, device_id=None,
                            sample_rate=None, dtype=None,
                            block_size=None, channels=None,
-                           read_callback=None, overflow_callback=None, error_callback=None):
+                           read_callback=None, overflow_callback=None, error_callback=None, ring_buffer_duration=None):
         """
         Creates input stream, and sets parameters. Then allocates
         a ring buffer and starts the stream.
@@ -676,6 +675,8 @@ class PySoundIo(object):
         self.input['read_callback'] = read_callback
         self.input['overflow_callback'] = overflow_callback
         self.input['error_callback'] = error_callback
+        if ring_buffer_duration is None:
+            ring_buffer_duration = DEFAULT_RING_BUFFER_DURATION
 
 
         if device_id is not None:
@@ -704,7 +705,7 @@ class PySoundIo(object):
         self._open_input_stream()
         pystream = _ctypes.cast(self.input['stream'], _ctypes.POINTER(SoundIoInStream))
         self.input['bytes_per_frame'] = self.get_bytes_per_frame(self.input['format'], channels)
-        capacity = (DEFAULT_RING_BUFFER_DURATION *
+        capacity = (ring_buffer_duration *
                     pystream.contents.sample_rate * self.input['bytes_per_frame'])
 
         self._create_input_ring_buffer(capacity)
@@ -925,7 +926,7 @@ class PySoundIo(object):
     def start_output_stream(self, device_id=None,
                             sample_rate=None, dtype=None,
                             block_size=None, channels=None,
-                            write_callback=None, underflow_callback=None, error_callback=None):
+                            write_callback=None, underflow_callback=None, error_callback=None, ring_buffer_duration=None):
         """
         Creates output stream, and sets parameters. Then allocates
         a ring buffer and starts the stream.
@@ -979,6 +980,9 @@ class PySoundIo(object):
         self.output['underflow_callback'] = underflow_callback
         self.output['error_callback'] = error_callback
 
+        if ring_buffer_duration is None:
+            ring_buffer_duration = DEFAULT_RING_BUFFER_DURATION
+
         if device_id is not None:
             self.output['device'] = self.get_output_device(device_id)
         else:
@@ -1005,7 +1009,7 @@ class PySoundIo(object):
         self._open_output_stream()
         pystream = _ctypes.cast(self.output['stream'], _ctypes.POINTER(SoundIoOutStream))
         self.output['bytes_per_frame'] = self.get_bytes_per_frame(self.output['format'], channels)
-        capacity = (DEFAULT_RING_BUFFER_DURATION *
+        capacity = (ring_buffer_duration *
                     pystream.contents.sample_rate * self.output['bytes_per_frame'])
         self._create_output_ring_buffer(capacity)
         self._clear_output_buffer()
@@ -1021,6 +1025,8 @@ class PySoundIo(object):
         self.default_output['write_callback'] = write_callback
         self.default_output['underflow_callback'] = underflow_callback
         self.default_output['error_callback'] = error_callback
+
+        self.default_output['device'] = self.get_default_output_device()
 
         pydevice = _ctypes.cast(self.default_output['device'], _ctypes.POINTER(SoundIoDevice))
         LOGGER.info('Input Device: %s' % pydevice.contents.name.decode())
