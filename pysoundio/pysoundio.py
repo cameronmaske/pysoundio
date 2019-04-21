@@ -806,7 +806,6 @@ class PySoundIo(object):
         if self.output['write_callback']:
             def wrapped_call(callback, data, block_size):
                 data = callback(data=data, length=block_size)
-                print(data)
                 if data:
                     soundio.ring_buffer_write_ptr(self.output['buffer'], data, len(data))
                     soundio.ring_buffer_advance_write_ptr(self.output['buffer'], len(data))
