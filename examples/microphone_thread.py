@@ -6,6 +6,7 @@ from pysoundio import (
 )
 from time import sleep
 import sys
+import threading
 
 import numpy as np
 
@@ -46,21 +47,22 @@ def get_level(data):
     return normalize
 
 RUNNING = True
+
 def error_callback(error):
     print(error)
     global RUNNING
     RUNNING = False
 
-
-class PassThrough():
-    def __init__(self):
+class PassThrough(threading.Thread):
+    def __init__(self, *args, **kwargs):
         self.pysoundio = None
         self.read_queue = NumpyQueue(1024, 2)
         self.write_queue = None
         self.read_thread = None
         self.write_thread = None
+        super(PassThrough, self).__init__(*args, **kwargs)
 
-    def start(self):
+    def run(self):
         self.pysoundio = PySoundIo(backend=SoundIoBackendWasapi)
         channels = 2
         sample_rate = 48000
@@ -102,6 +104,10 @@ class PassThrough():
             error_callback=error_callback
         )
 
+        # while True:
+        #     pass
+
+        # self.stop()
 
     def overflow_callback(self):
         print("Overflow")
@@ -114,9 +120,8 @@ class PassThrough():
         np_data = np.frombuffer(data, dtype="int16")
         np_data = np_data.reshape((2, -1))
         self.read_queue.append(np_data)
-        read_data = self.read_queue.read_last(480)
+        read_data = self.read_queue.read_last(1024)
         audio_level = get_level(read_data.astype("int16").tostring())
-        # print(audio_level)
         if audio_level > 0:
             self.write_queue.append(np_data)
         else:
@@ -131,6 +136,10 @@ class PassThrough():
             data[:] = buffer
         return data
 
+    def stop(self):
+        self.read_thread.stop()
+        self.write_thread.stop()
+
     def __exit__(self):
         self.pysoundio.close()
 
@@ -141,11 +150,7 @@ if __name__ == '__main__':
     print("Stream started")
 
 
-    while RUNNING:
-        try:
-            sleep(1)
-        except KeyboardInterrupt:
-            RUNNING = False
-            print("Stopping")
+    sleep(10)
 
+    pass_through.stop()
     pass_through.pysoundio.close()
