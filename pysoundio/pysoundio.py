@@ -805,12 +805,14 @@ class PySoundIo(object):
         data = bytearray(b'\x00' * block_size * self.output['bytes_per_frame'])
         free_bytes = soundio.ring_buffer_free_count(self.output['buffer'])
         if self.output['write_callback']:
-            def wrapped_call(callback, data, block_size):
-                data = callback(data=data, length=block_size)
+            def wrapped_call(callback, data, block_size, delay):
+                data = callback(data=data, length=block_size, delay=delay)
                 if data:
                     soundio.ring_buffer_write_ptr(self.output['buffer'], data, len(data))
                     soundio.ring_buffer_advance_write_ptr(self.output['buffer'], len(data))
-            self.worker_loop.call_soon_threadsafe(wrapped_call, self.output['write_callback'], data, block_size)
+
+            delay = (( (self.output['capacity'] - free_bytes) / self.output['bytes_per_frame']) / self.output['sample_rate']) * 1000
+            self.worker_loop.call_soon_threadsafe(wrapped_call, self.output['write_callback'], data, block_size, delay)
         else:
             soundio.ring_buffer_write_ptr(self.output['buffer'], data, len(data))
             soundio.ring_buffer_advance_write_ptr(self.output['buffer'], len(data))
@@ -1015,6 +1017,7 @@ class PySoundIo(object):
                     pystream.contents.sample_rate * self.output['bytes_per_frame'])
         self._create_output_ring_buffer(capacity)
         self._clear_output_buffer()
+        self.output['capacity'] = soundio.ring_buffer_capacity(self.output['buffer'])
         self.start_worker_loop()
         self._start_output_stream()
         self.flush()

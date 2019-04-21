@@ -123,7 +123,7 @@ class PassThrough():
             self.write_queue.append(np.zeros(np_data.shape, dtype="int16"))
         return
 
-    def write_callback(self, data, length):
+    def write_callback(self, data, length, delay):
         # print("write_callback")
         np_data = self.write_queue.pop_first(length)
         buffer = np_data.astype("int16").tostring()
