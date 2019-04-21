@@ -705,7 +705,7 @@ class PySoundIo(object):
         self._open_input_stream()
         pystream = _ctypes.cast(self.input['stream'], _ctypes.POINTER(SoundIoInStream))
         self.input['bytes_per_frame'] = self.get_bytes_per_frame(self.input['format'], channels)
-        capacity = (ring_buffer_duration *
+        capacity = int(ring_buffer_duration *
                     pystream.contents.sample_rate * self.input['bytes_per_frame'])
 
         self._create_input_ring_buffer(capacity)
@@ -1009,7 +1009,7 @@ class PySoundIo(object):
         self._open_output_stream()
         pystream = _ctypes.cast(self.output['stream'], _ctypes.POINTER(SoundIoOutStream))
         self.output['bytes_per_frame'] = self.get_bytes_per_frame(self.output['format'], channels)
-        capacity = (ring_buffer_duration *
+        capacity = int(ring_buffer_duration *
                     pystream.contents.sample_rate * self.output['bytes_per_frame'])
         self._create_output_ring_buffer(capacity)
         self._clear_output_buffer()
@@ -1049,7 +1049,7 @@ class PySoundIo(object):
         self._open_default_output_stream()
         pystream = _ctypes.cast(self.default_output['stream'], _ctypes.POINTER(SoundIoOutStream))
         self.default_output['bytes_per_frame'] = self.get_bytes_per_frame(self.default_output['format'], channels)
-        capacity = (DEFAULT_RING_BUFFER_DURATION *
+        capacity = int(DEFAULT_RING_BUFFER_DURATION *
                     pystream.contents.sample_rate * self.default_output['bytes_per_frame'])
         self._create_default_output_ring_buffer(capacity)
         self._clear_default_output_buffer()
